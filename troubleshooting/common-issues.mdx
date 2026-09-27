@@ -1,0 +1,269 @@
+---
+title: "Common Minecraft Paper Server Issues and Solutions"
+sidebarTitle: "Common Issues"
+description: "Fixes for the most frequently encountered problems on Paper Minecraft servers: connection refused, can't join, plugins not loading, and more."
+---
+
+Setting up and running a Paper Minecraft server is straightforward for the most part, but a handful of errors appear so frequently that they have become a rite of passage for new server administrators. This page documents the most common problems encountered during initial setup and day-to-day operation, along with clear, tested steps to resolve each one. Work through the relevant section top-to-bottom — the steps are ordered from the most likely cause to the least likely.
+
+## Issues and Solutions
+
+<Accordion title="Players cannot connect: Connection Refused">
+  A "Connection Refused" error means the player's client reached your server's IP address but nothing answered on port 25565. This is almost always a firewall or binding issue rather than a problem with Paper itself.
+
+  **1. Confirm the server process is actually running:**
+
+  ```bash
+  ps aux | grep paper
+  ```
+
+  If no Paper process appears, the server crashed on startup. Check `logs/latest.log` for the cause before continuing.
+
+  **2. Verify port 25565 is open and listening:**
+
+  ```bash
+  ss -tlnp | grep 25565
+  ```
+
+  You should see a line showing `LISTEN` with `0.0.0.0:25565` or `*:25565`. If nothing appears, the server started but bound to a different port — check `server-port` in `server.properties`.
+
+  **3. Check and update firewall rules:**
+
+  ```bash
+  sudo ufw status
+  sudo ufw allow 25565/tcp
+  sudo ufw reload
+  ```
+
+  If you're using a cloud provider (AWS, GCP, Azure, Hetzner, etc.), you also need to open port 25565 in the provider's security group or firewall panel — `ufw` alone is not sufficient in those environments.
+
+  **4. Ensure `server-ip` is blank in `server.properties`:**
+
+  ```properties
+  server-ip=
+  ```
+
+  If `server-ip` is set to a specific IP address, the server will only accept connections on that exact interface. Leaving it blank binds to all available interfaces, which is the correct setting for most deployments.
+</Accordion>
+
+<Accordion title="ViaVersion: Outdated client / outdated server message">
+  This message appears when a client version mismatch is detected and ViaVersion is either not installed, not loading correctly, or is an incompatible version.
+
+  **1. Confirm the ViaVersion JAR is in the right place:**
+
+  The JAR file must be placed directly in the `plugins/` folder in your server's root directory — not in a subfolder inside `plugins/`.
+
+  ```bash
+  ls plugins/ | grep -i via
+  ```
+
+  **2. Check whether ViaVersion loaded successfully in-game:**
+
+  ```text
+  /plugins
+  ```
+
+  ViaVersion should appear in **green**. A red name means it failed to enable — a crash or dependency error prevented it from loading.
+
+  **3. Ensure you have the correct ViaVersion release:**
+
+  ViaVersion releases are tied to specific Paper/Minecraft versions. Visit [hangar.papermc.io](https://hangar.papermc.io/ViaVersion/ViaVersion) and confirm you've downloaded the release that matches your Paper version.
+
+  **4. Check the ViaVersion log for errors:**
+
+  ```bash
+  cat plugins/ViaVersion/logs/viaversion.log
+  ```
+
+  This log contains detailed output from ViaVersion's initialization, including any version incompatibility warnings or translation errors that would prevent it from functioning.
+</Accordion>
+
+<Accordion title="Server TPS is low immediately after startup">
+  Low TPS in the first few minutes after startup is expected and normal. It does not mean something is wrong with your configuration.
+
+  **Why this happens:** The JVM starts with all bytecode interpreted. Over the first several minutes, the JIT (Just-In-Time) compiler identifies frequently called methods and compiles them to native machine code. During this warm-up phase, the server does significantly more CPU work per tick than it will once JIT compilation is complete. TPS will recover on its own.
+
+  **What to do:**
+  - Wait approximately 5 minutes after startup before evaluating TPS
+  - Avoid stress-testing or opening the server to many players immediately after a restart
+
+  **If TPS stays low after 5–10 minutes:**
+
+  Verify that `view-distance` and `simulation-distance` are set to the recommended values in `paper-world.yml`:
+
+  ```yaml
+  # paper-world.yml
+  chunks:
+    view-distance: 8
+    simulation-distance: 4
+  ```
+
+  Then profile to find the actual cause:
+
+  ```text
+  /timings report
+  ```
+
+  ```text
+  /spark profiler start --timeout 60
+  ```
+</Accordion>
+
+<Accordion title="java.lang.OutOfMemoryError in logs">
+  An `OutOfMemoryError` means the JVM ran out of heap space. The server will crash or become unresponsive when this occurs. There are two root causes: the heap is sized too small, or a plugin is leaking memory.
+
+  **1. Increase the maximum heap size in your start script:**
+
+  Open `start.sh` and raise the `-Xmx` value. As a general guideline, allocate 1 GB for the base server plus roughly 1 GB per 10 players you expect online simultaneously:
+
+  ```bash
+  java -Xms6G -Xmx6G -jar paper.jar --nogui
+  ```
+
+  Always set `-Xms` equal to `-Xmx`. Mismatched values cause the JVM to resize the heap at runtime, triggering additional GC pressure.
+
+  **2. Check for memory-leaking plugins:**
+
+  ```text
+  /spark heap
+  ```
+
+  The heap summary shows which object types are consuming the most memory. If a plugin-related class appears near the top and grows between heap dumps, that plugin is likely leaking.
+
+  **3. Verify `vm.max_map_count` is set correctly:**
+
+  Large heaps (above ~2 GB) require a higher memory map limit. Check and set the value:
+
+  ```bash
+  sysctl vm.max_map_count
+  ```
+
+  ```bash
+  sudo sysctl -w vm.max_map_count=262144
+  ```
+
+  To make the setting persistent across reboots, add it to `/etc/sysctl.d/99-minecraft.conf`.
+</Accordion>
+
+<Accordion title="sysctl: permission denied when applying parameters">
+  Attempting to set kernel parameters with `sysctl` may fail with a permission error in certain hosting environments, even when running as root.
+
+  **1. Ensure you are running as root or using sudo:**
+
+  ```bash
+  sudo sysctl -w net.core.default_qdisc=fq
+  sudo sysctl -w net.ipv4.tcp_congestion_control=bbr
+  ```
+
+  Switching to the root user with `sudo -i` before running sysctl commands can resolve permission issues caused by sudoers restrictions.
+
+  **2. Some VPS providers block specific parameters at the hypervisor level:**
+
+  Providers that use OpenVZ or LXC container virtualization restrict which kernel namespaces are writable by guests. If a parameter is blocked at this level, no amount of `sudo` will override it — it is enforced outside your container. Contact your hosting provider and ask whether the parameter can be enabled, or consider switching to a KVM-based VPS which provides full kernel isolation.
+
+  **3. Check your virtualization type:**
+
+  ```bash
+  systemd-detect-virt
+  ```
+
+  Output of `openvz` or `lxc` confirms you are in a restricted container environment. Output of `kvm`, `vmware`, or `none` (bare metal) means sysctl restrictions should not apply and the error has a different cause.
+</Accordion>
+
+<Accordion title="BBR not available (module not found)">
+  BBR (Bottleneck Bandwidth and Round-trip propagation time) is a TCP congestion control algorithm available in Linux kernels 4.9 and later. If the module is missing, the kernel is too old or BBR was not compiled in.
+
+  **1. Check your current kernel version:**
+
+  ```bash
+  uname -r
+  ```
+
+  You need kernel **4.9 or higher**. Ubuntu 22.04 LTS ships with kernel 5.15 and includes BBR by default. If you see a version below 4.9, a kernel upgrade is required.
+
+  **2. Try loading the BBR module manually:**
+
+  ```bash
+  sudo modprobe tcp_bbr
+  ```
+
+  If this succeeds without output, BBR is now available. Confirm with:
+
+  ```bash
+  sysctl net.ipv4.tcp_available_congestion_control
+  ```
+
+  You should see `bbr` listed in the output.
+
+  **3. If the module is missing, install a newer kernel:**
+
+  On Ubuntu, the hardware enablement (HWE) stack provides an up-to-date kernel:
+
+  ```bash
+  sudo apt update
+  sudo apt install linux-generic-hwe-22.04
+  sudo reboot
+  ```
+
+  After rebooting, run `uname -r` again to confirm the new kernel is active, then retry `modprobe tcp_bbr`.
+</Accordion>
+
+<Accordion title="Server starts but EULA error appears">
+  Mojang requires all server operators to accept the Minecraft End User License Agreement before the server will start. The EULA error is one of the most common issues for first-time server setups.
+
+  **What you'll see in the log:**
+
+  ```text
+  [Server] You need to agree to the EULA in order to run the server. Go to eula.txt for more info.
+  ```
+
+  **1. Locate and edit `eula.txt`:**
+
+  The file is created automatically in the same directory as `paper.jar` on the first run. Open it and change `false` to `true`:
+
+  ```properties
+  eula=true
+  ```
+
+  **2. Alternatively, set it in one command:**
+
+  ```bash
+  echo 'eula=true' > eula.txt
+  ```
+
+  **3. Restart the server:**
+
+  ```bash
+  ./start.sh
+  ```
+
+  The EULA check runs at startup — once `eula=true` is set and saved, the server will proceed past it on the next launch.
+</Accordion>
+
+<Accordion title="Plugins not loading / showing red in /plugins">
+  A red plugin name in `/plugins` means the plugin's `onEnable()` method threw an exception, or the plugin failed a dependency check before it even reached that point. The server log always contains the specific error.
+
+  **1. Read the actual error from the log:**
+
+  ```bash
+  grep -i 'error\|exception' logs/latest.log
+  ```
+
+  The stack trace following an `[ERROR]` line for a plugin will tell you exactly what went wrong — a missing dependency, a class not found, or an incompatible API call.
+
+  **2. Verify the plugin supports your Paper version:**
+
+  Not all plugins are updated promptly after a major Minecraft release. Visit the plugin's page on [Hangar](https://hangar.papermc.io) or [Modrinth](https://modrinth.com/plugins) and confirm that a release targeting Paper 1.21.1 (or your current version) is available.
+
+  **3. Check for missing plugin dependencies:**
+
+  Many plugins require other plugins to be present. Economy plugins commonly require [Vault](https://www.spigotmc.org/resources/vault.34315/). The plugin's documentation or `plugin.yml` will list required dependencies — install them all before restarting.
+
+  **4. Isolate the conflict by removing plugins one at a time:**
+
+  If multiple plugins are failing and the errors are unclear, use binary elimination: move half the plugins out of the `plugins/` folder, restart, and check whether the problem persists. Repeat until you find the conflicting plugin.
+</Accordion>
+
+<Note>
+  If your issue is not listed here, the [PaperMC Discord](https://discord.gg/papermc) and the [PaperMC forums](https://forums.papermc.io) are the best places to get help. Both communities are active and experienced — include your Paper version, Java version, plugin list, and a paste of `logs/latest.log` to get the fastest response.
+</Note>

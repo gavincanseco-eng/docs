@@ -1,0 +1,91 @@
+---
+title: "Essential Performance Plugins for a Low-Latency Paper Server"
+sidebarTitle: "Performance Plugins"
+description: "Install Spark, ClearLag, and other essential plugins to profile, monitor, and maintain peak performance on your Paper 1.21.1 Minecraft server."
+---
+
+Paper's built-in optimizations take you a long way, but they cannot tell you *why* your server is lagging, clean up the entity accumulation that naturally builds up during a session, or pre-generate chunks before your first players arrive. A small, carefully chosen set of plugins fills those gaps — giving you profiling visibility, automated runtime cleanup, and pre-generation tooling without meaningfully adding to your tick budget. The four plugins below are the ones most consistently recommended across high-performance Paper setups, each solving a specific and non-overlapping problem.
+
+## Plugin Overview
+
+<CardGroup cols={2}>
+  <Card title="Spark" icon="fire-flame-curved" href="https://spark.lucko.me/">
+    An in-depth CPU profiler and live TPS/MSPT monitor. Spark produces flame graphs that show exactly which plugin, world, or vanilla system is consuming the most tick time — it is the essential first tool to reach for when diagnosing any lag complaint.
+  </Card>
+  <Card title="ClearLag" icon="trash" href="https://www.spigotmc.org/resources/clearlagg.68271/">
+    Removes excess dropped items and configurable entity types on a scheduled interval. Left unchecked, item entities and passive mob overflow are among the most common causes of steadily degrading TPS on survival servers.
+  </Card>
+  <Card title="Chunky" icon="map" href="https://hangar.papermc.io/pop4959/Chunky">
+    Pre-generates world chunks in a configurable radius before players ever set foot in those areas. By front-loading chunk generation during off-peak hours, Chunky eliminates the frame-rate spikes players otherwise cause by walking into ungenerated terrain.
+  </Card>
+  <Card title="LuckPerms" icon="key" href="https://luckperms.net/">
+    The only permissions plugin you should run if your server needs a permission system. LuckPerms performs all permission lookups asynchronously and uses an in-memory cache, contributing effectively zero tick overhead compared to older synchronous alternatives like PermissionsEx or GroupManager.
+  </Card>
+</CardGroup>
+
+## Installation
+
+Each plugin is distributed as a JAR that drops into your `plugins/` folder. The workflow is the same for all four:
+
+**Spark**
+Download from [https://spark.lucko.me/](https://spark.lucko.me/) — choose the Paper/Bukkit build.
+
+```bash
+cp spark-*.jar ~/minecraft/server/plugins/
+```
+
+**ClearLag**
+Download from [https://www.spigotmc.org/resources/clearlagg.68271/](https://www.spigotmc.org/resources/clearlagg.68271/).
+
+```bash
+cp ClearLag-*.jar ~/minecraft/server/plugins/
+```
+
+**Chunky**
+Download from [https://hangar.papermc.io/pop4959/Chunky](https://hangar.papermc.io/pop4959/Chunky).
+
+```bash
+cp Chunky-*.jar ~/minecraft/server/plugins/
+```
+
+**LuckPerms**
+Download the Bukkit build from [https://luckperms.net/download](https://luckperms.net/download).
+
+```bash
+cp LuckPerms-Bukkit-*.jar ~/minecraft/server/plugins/
+```
+
+After placing all JARs, perform a full server restart so each plugin initialises and writes its default configuration files.
+
+## Spark Usage
+
+Once the server is running with Spark installed, use these in-game or console commands to diagnose performance issues:
+
+```
+/spark profiler start
+/spark profiler stop
+/spark tps
+/spark mspt
+```
+
+`/spark profiler start` begins recording a CPU flame graph. Run it for 60–120 seconds during a period of lag, then stop it with `/spark profiler stop` — Spark will output a URL to a hosted flame graph you can inspect in your browser. The flame graph shows which method calls are consuming the most CPU time, letting you pinpoint whether lag originates from a specific plugin, entity AI, chunk ticking, or another system. `/spark tps` and `/spark mspt` give you a live read of server ticks-per-second and milliseconds-per-tick respectively.
+
+## Chunky Pre-Generation
+
+Pre-generate your world's chunks before opening the server to players using the following sequence of commands run from in-game or the server console:
+
+```
+/chunky world world
+/chunky radius 5000
+/chunky start
+```
+
+`/chunky world world` targets the overworld (replace `world` with `world_nether` or `world_the_end` for other dimensions). `/chunky radius 5000` sets the pre-generation radius to 5 000 blocks from the world spawn point. `/chunky start` begins generation, which runs as a background task and does not block normal server operation. You can monitor progress with `/chunky status`.
+
+<Tip>
+  Run Chunky pre-generation before opening your server to players. Chunk generation is one of the most CPU- and I/O-intensive operations a Minecraft server performs — doing it upfront during setup means players will never trigger it during normal play, eliminating the most common source of lag spikes on new servers entirely.
+</Tip>
+
+<Warning>
+  Avoid plugin-heavy setups. Every plugin that registers event listeners adds overhead to the event pipeline — even if that plugin is idle. Each additional `PlayerMoveEvent`, `BlockBreakEvent`, or `ChunkLoadEvent` handler compounds the per-tick cost. Audit your plugin list regularly and remove anything you are not actively using. More plugins is not better; the right plugins at the minimum necessary count is the goal.
+</Warning>

@@ -1,0 +1,83 @@
+{
+  "projectType": "infrastructure",
+  "projectName": "ServerHoster",
+  "projectDescription": "A complete guide to setting up and optimizing a high-performance, low-latency Minecraft Java Edition server running Paper on Java 21.",
+  "theme": "aspen",
+  "primaryColor": "#4CAF50",
+  "lightColor": "#81C784",
+  "darkColor": "#2E7D32",
+  "navigation": {
+    "tabs": [
+      {
+        "tab": "Setup Guide",
+        "groups": [
+          {
+            "group": "Introduction",
+            "pages": [
+              "introduction",
+              "requirements"
+            ]
+          },
+          {
+            "group": "Server Software",
+            "pages": [
+              "server-software/paper",
+              "server-software/viaversion",
+              "server-software/performance-plugins"
+            ]
+          },
+          {
+            "group": "Configuration",
+            "pages": [
+              "configuration/server-properties",
+              "configuration/paper-global",
+              "configuration/paper-world",
+              "configuration/startup-flags"
+            ]
+          },
+          {
+            "group": "OS & Network Tuning",
+            "pages": [
+              "optimization/linux-network",
+              "optimization/sysctl",
+              "optimization/bbr-congestion-control"
+            ]
+          },
+          {
+            "group": "Hosting & Operations",
+            "pages": [
+              "hosting/choosing-a-provider",
+              "hosting/benchmarking-ping",
+              "hosting/maintenance"
+            ]
+          },
+          {
+            "group": "Troubleshooting",
+            "pages": [
+              "troubleshooting/lag-diagnosis",
+              "troubleshooting/common-issues"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "keyFeatures": [
+    "Paper server setup for Minecraft Java 1.21.1",
+    "ViaVersion multi-version client compatibility",
+    "Aikar's Flags and G1GC JVM tuning for zero-GC-pause gameplay",
+    "Linux sysctl and TCP/IP network stack optimization",
+    "BBR congestion control configuration",
+    "Optimized server.properties for minimal network overhead",
+    "paper-global.yml and paper-world.yml performance tuning",
+    "Hosting provider selection for lowest physical routing latency"
+  ],
+  "publicApiSurface": [
+    "server.properties configuration keys",
+    "paper-global.yml settings",
+    "paper-world.yml settings",
+    "Java startup flags (Aikar's Flags)",
+    "sysctl.conf network parameters",
+    "ViaVersion plugin configuration"
+  ]
+}

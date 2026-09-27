@@ -1,0 +1,56 @@
+---
+title: "Support All Minecraft Client Versions with ViaVersion"
+sidebarTitle: "ViaVersion"
+description: "Install ViaVersion on your Paper 1.21.1 server to allow clients from version 1.21.1 up to the latest Minecraft Java release to connect seamlessly."
+---
+
+ViaVersion is a Paper plugin that acts as a real-time protocol translator between your server and connecting clients. When a player running a newer Minecraft client — say, 1.21.4 — attempts to join a server pinned at 1.21.1, the two sides speak slightly different network protocols and the connection is normally refused. ViaVersion intercepts that handshake and translates packets on the fly in both directions, making the newer client believe it is talking to a server on its own version and allowing the connection to proceed without any changes to the client or the server jar itself. The result is that you can keep your server on a well-tested, stable version of Paper while still accepting players who have updated to the latest Minecraft release.
+
+## Installation
+
+<Steps>
+  <Step title="Download ViaVersion">
+    Download the latest ViaVersion JAR from the official Hangar page:
+    [https://hangar.papermc.io/ViaVersion/ViaVersion](https://hangar.papermc.io/ViaVersion/ViaVersion)
+
+    Always use the build marked **Release** — avoid snapshot or alpha builds on a production server.
+  </Step>
+  <Step title="Place the JAR in your plugins folder">
+    Create the `plugins/` directory if it does not already exist, then copy the downloaded JAR into it:
+
+    ```bash
+    mkdir -p ~/minecraft/server/plugins
+    # Copy downloaded JAR into plugins/
+    cp ViaVersion-*.jar ~/minecraft/server/plugins/
+    ```
+  </Step>
+  <Step title="Restart the server">
+    Perform a full server restart (not a reload). On startup, ViaVersion automatically detects the Paper plugin environment, registers itself, and writes its default configuration to `plugins/ViaVersion/config.yml`. No further setup is required for basic multi-version support.
+  </Step>
+</Steps>
+
+## Key Config Options
+
+After the first restart, open `plugins/ViaVersion/config.yml` to review the most relevant settings:
+
+```yaml plugins/ViaVersion/config.yml
+checkforupdates: true
+# Suppress version mismatch warnings in console
+suppress-metadata-errors: true
+# Enable 1.9+ combat for newer clients (recommended)
+use-new-effects-handler: true
+```
+
+Most operators leave the rest of the file at its defaults. The three options above cover update notifications, console noise reduction, and ensuring that newer-client players receive the correct potion/effect rendering introduced in 1.9.
+
+## Supported Versions
+
+ViaVersion alone handles the case of **newer clients connecting to an older server**. Specifically, it supports clients from the server's base version (1.21.1 in this guide) up to the latest released Minecraft Java version — meaning as Mojang ships new releases, ViaVersion updates to support them and your server remains accessible without a server-jar upgrade. If you need to go in the other direction (older clients connecting to a newer server), that scenario requires ViaBackwards in addition to ViaVersion, which is covered separately.
+
+<Info>
+  ViaVersion is a plugin only — it requires no modifications to `server.properties`, no changes to the server JAR, and no client-side installation. Players connect using their normal Minecraft launcher with no additional steps.
+</Info>
+
+<Warning>
+  Some features introduced in newer Minecraft versions — such as new block types, items, or visual effects — may not render correctly on clients running versions that predate those features. This is an inherent limitation of protocol translation, not a bug in ViaVersion. Gameplay remains functional, but visual fidelity for brand-new content is not guaranteed across all version gaps.
+</Warning>

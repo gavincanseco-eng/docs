@@ -1,0 +1,126 @@
+---
+title: "paper-world.yml: Reduce Entity and Chunk Tick Overhead"
+sidebarTitle: "paper-world.yml"
+description: "Configure paper-world.yml (per-world defaults) to reduce entity processing, optimize mob spawning, and lower main-thread tick cost on Paper 1.21.1."
+---
+
+`paper-world-defaults.yml` (located in the server root) applies to all worlds unless overridden per-world in `world/paper-world.yml`. These settings target the main thread tick budget — specifically entity ticking, chunk I/O scheduling, and mob spawning logic, which are the three biggest contributors to high MSPT on a live server.
+
+```yaml paper-world-defaults.yml
+_version: 28
+
+entities:
+  armor-stands:
+    do-collision-entity-lookups: false   # Armor stands don't need collision checks
+    tick: false                           # Static armor stands don't need ticking
+  behavior:
+    baby-zombie-movement-modifier: 0.5
+    disable-chest-cat-detection: true    # Cats on chests is a performance bug
+    disable-creeper-lingering-effect: false
+    door-breaking-difficulty:
+      husk: [HARD]
+      vindicator: [NORMAL, HARD]
+      zombie: [HARD]
+      zombie_villager: [HARD]
+      zombified_piglin: [HARD]
+    mobs-can-always-pick-up-loot:
+      skeletons: false
+      zombies: false
+    nerf-pigmen-from-nether-portals: false
+    zombie-villager-infection-chance: -1.0
+  mob-effects:
+    spiders-immune-to-poison-effect: true
+    zombies-immune-to-slowness: true
+
+chunks:
+  auto-save-interval: 6000              # Save chunks every 5 min (6000 ticks)
+  delay-chunk-unloads-by: 10s
+  entity-per-chunk-save-limit:
+    arrow: 16
+    ender_pearl: 8
+    experience_orb: 16
+    fireball: 8
+    small_fireball: 8
+    snowball: 8
+  fixed-chunk-inhabited-time: -1
+  max-auto-save-chunks-per-tick: 8
+  prevent-moving-into-unloaded-chunks: true
+  unload-frozen-chunks: false
+
+maps:
+  item-frame-cursor-limit: 128
+  item-frame-cursor-update-interval: 10
+
+misc:
+  light-queue-size: 20
+  update-pathfinding-on-block-place: true
+
+spawning:
+  all-chunks-are-slime-chunks: false
+  count-all-mobs-for-spawning: false
+  creative-arrow-despawn-rate: default
+  despawn-ranges:
+    ambient:
+      hard: 128
+      soft: 32
+    axolotls:
+      hard: 128
+      soft: 32
+    creature:
+      hard: 128
+      soft: 32
+    misc:
+      hard: 128
+      soft: 32
+    monster:
+      hard: 128
+      soft: 64
+    underground_water_creature:
+      hard: 128
+      soft: 32
+    water_ambient:
+      hard: 64
+      soft: 32
+    water_creature:
+      hard: 128
+      soft: 32
+  duplicate-uuid:
+    mode: SAFE_REGEN
+    safe-regen-delete-range: 32
+  monster-spawn-max-light-level: -1
+  non-player-arrow-despawn-rate: default
+  per-player-mob-spawns: true
+  scan-for-legacy-ender-dragon: false
+  skeleton-horse-thunder-spawn-chance: 0.01
+  slime-spawn-height:
+    slime-chunk:
+      maximum: 40
+    surface-biome:
+      maximum: 70
+      minimum: 50
+  wandering-trader:
+    spawn-chance-failure-increment: 25
+    spawn-chance-max: 75
+    spawn-chance-min: 25
+    spawn-day-length: 24000
+    spawn-minute-length: 1200
+  wateranimal-spawn-height:
+    maximum: default
+    minimum: default
+```
+
+## Key Settings Explained
+
+The five settings below have the highest impact on tick time. The rest of the file controls edge-case spawning and save behaviour that is safe to leave at these recommended values.
+
+| Setting | Effect |
+|---|---|
+| `entities.armor-stands.tick: false` | Stops ticking static armor stands (huge win in decor-heavy servers) |
+| `chunks.auto-save-interval: 6000` | 5-minute chunk saves prevent I/O spikes |
+| `chunks.max-auto-save-chunks-per-tick: 8` | Caps how many chunks auto-save per tick to prevent stalls |
+| `spawning.per-player-mob-spawns: true` | Distributes mob spawning per-player instead of globally |
+| `chunks.prevent-moving-into-unloaded-chunks: true` | Stops players from teleporting into unloaded chunks (crash prevention) |
+
+<Warning>
+  Do not set `auto-save-interval` below `2400` ticks (2 minutes) — frequent saves stress I/O and hurt main thread MSPT.
+</Warning>

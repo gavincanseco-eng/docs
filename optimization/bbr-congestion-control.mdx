@@ -1,0 +1,107 @@
+---
+title: "Enable BBR Congestion Control for Lower Game Server Latency"
+sidebarTitle: "BBR"
+description: "Replace Linux's default CUBIC TCP congestion control with Google's BBR algorithm to reduce bufferbloat and improve Minecraft server ping stability."
+---
+
+BBR (Bottleneck Bandwidth and Round-trip propagation time) is a TCP congestion control algorithm developed by Google and merged into the Linux mainline kernel in version 4.9. Unlike CUBIC, which infers network congestion from packet loss events, BBR builds an explicit model of the network path's available bandwidth and minimum RTT. It uses that model to set its send rate — filling the pipe to capacity without unnecessarily bloating intermediate router buffers. For game servers, this translates directly to lower bufferbloat and more stable, predictable player ping under load.
+
+## Why BBR beats CUBIC for game servers
+
+<Tabs>
+  <Tab title="CUBIC (Default)">
+    CUBIC, the Linux default, uses an additive-increase/multiplicative-decrease strategy driven by packet loss. It steadily increases the send rate until a packet is dropped, then backs off sharply, then climbs again. This cycle continuously overfills router and switch buffers before detecting the problem — a phenomenon known as **bufferbloat**.
+
+    For Minecraft players this manifests as:
+    - Elevated baseline ping caused by packets queued in bloated buffers
+    - Jittery, inconsistent ping rather than a steady value
+    - Latency spikes during join bursts or large chunk transfers as CUBIC overshoots and backs off
+    - Players on slower uplinks competing poorly with players on faster connections
+
+    CUBIC is well-suited to maximising bulk throughput (large file transfers, video streaming), which is why it is the kernel default. It was not designed for the small, frequent, latency-sensitive packets that characterise game server traffic.
+  </Tab>
+  <Tab title="BBR">
+    BBR continuously probes the network path by measuring the actual round-trip time of delivered packets and estimating the bottleneck bandwidth. It targets a send rate that fills the network path without causing queuing at intermediate hops, keeping buffers lean by design.
+
+    For Minecraft players this means:
+    - Lower baseline ping because packets are not waiting in bloated router buffers
+    - Stable, consistent latency with minimal jitter even under concurrent player load
+    - Graceful behaviour during join bursts — BBR does not require a loss event to detect congestion
+    - Fair bandwidth sharing across players without the sawtooth throughput pattern of CUBIC
+
+    BBR is particularly effective when your server is behind a network path with moderate buffering, such as a data centre uplink or a shared hosting environment.
+  </Tab>
+</Tabs>
+
+## Check your kernel version
+
+BBR requires Linux kernel 4.9 or later. Ubuntu 22.04 LTS ships kernel 5.15 and Ubuntu 24.04 ships 6.8, so both are fully supported out of the box.
+
+```bash
+uname -r
+# Should output 5.x.x or higher
+```
+
+## Check if BBR is available
+
+Probe the kernel module and then list available algorithms to confirm BBR appears.
+
+```bash
+modprobe tcp_bbr
+sysctl net.ipv4.tcp_available_congestion_control
+# Should include: bbr
+```
+
+If `bbr` does not appear in the output, your kernel may have been compiled without the module. On Ubuntu and Debian this is uncommon — if you encounter it, verify your kernel version and consider upgrading to a mainline kernel via the `linux-generic-hwe` package.
+
+## Enable BBR
+
+<Steps>
+  <Step title="Load the BBR kernel module">
+    Load the module for the current session and register it for automatic loading at boot.
+
+    ```bash
+    sudo modprobe tcp_bbr
+    echo 'tcp_bbr' | sudo tee /etc/modules-load.d/bbr.conf
+    ```
+  </Step>
+  <Step title="Set BBR as the active congestion control">
+    Apply the congestion control and queuing discipline immediately. These values are already included in the sysctl configuration from the previous page — the commands below are shown for reference or for applying BBR independently.
+
+    ```bash
+    sudo sysctl -w net.core.default_qdisc=fq
+    sudo sysctl -w net.ipv4.tcp_congestion_control=bbr
+    ```
+  </Step>
+  <Step title="Make it permanent">
+    If you have already written `/etc/sysctl.d/99-minecraft.conf` from the [sysctl Tuning](/optimization/sysctl) page, these lines are already present and no additional action is needed. The relevant entries are:
+
+    ```ini /etc/sysctl.d/99-minecraft.conf
+    net.core.default_qdisc = fq
+    net.ipv4.tcp_congestion_control = bbr
+    ```
+  </Step>
+  <Step title="Verify BBR is active">
+    Confirm that the kernel is using BBR, then check a live player connection to see BBR reported in the socket's congestion control field.
+
+    ```bash
+    sysctl net.ipv4.tcp_congestion_control
+    # Expected: net.ipv4.tcp_congestion_control = bbr
+
+    ss -tin dst :25565 | grep -i bbr
+    # Should show 'bbr' in the congestion control field for active connections
+    ```
+  </Step>
+</Steps>
+
+## What is `fq` (Fair Queue)?
+
+BBR controls the *rate* at which it sends data, but it relies on the kernel's packet scheduler (qdisc) to actually pace packets out of the transmit queue at that rate. The `fq` (Fair Queue) qdisc is BBR's recommended companion: it gives each individual TCP flow its own queue, paces packet transmission according to the flow's estimated rate, and prevents any single high-bandwidth flow from starving others of transmission time. Without `fq` — or with the default `pfifo_fast` qdisc — BBR's pacing signals are not honoured accurately, and its latency benefits are partially lost. Always pair `net.ipv4.tcp_congestion_control = bbr` with `net.core.default_qdisc = fq`.
+
+<Note>
+  BBR is included in the Linux mainline kernel and ships as a loadable module on all major distributions. No additional packages need to be installed on Ubuntu 22.04 or later. On older distributions (Ubuntu 18.04, CentOS 7), you may need to install an HWE or mainline kernel package before BBR is available.
+</Note>
+
+<Tip>
+  You can measure the before/after improvement directly from a player's machine. Before enabling BBR, run `ping <server-ip> -c 60` while the server is under normal load and note the standard deviation (jitter) in the summary line. Enable BBR, wait a minute for connections to stabilise, then repeat the same ping test. A meaningful reduction in the standard deviation confirms BBR is reducing bufferbloat on your specific network path.
+</Tip>

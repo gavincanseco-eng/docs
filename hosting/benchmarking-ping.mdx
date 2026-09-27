@@ -1,0 +1,107 @@
+---
+title: "Benchmarking Minecraft Server Ping and Network Latency"
+sidebarTitle: "Benchmarking Ping"
+description: "Use ping, mtr, and in-game latency tools to measure baseline ping, identify routing problems, and verify that your OS tuning has reduced latency."
+---
+
+Measuring latency accurately before and after optimizations is essential for knowing whether your changes made a real difference. Without a baseline, you are flying blind — a configuration change that looks good on paper might have no measurable effect, or worse, could introduce regression. This page shows the tools and methodology for benchmarking your Minecraft server's network performance so that every tuning decision is backed by data.
+
+## Tools Overview
+
+Each tool in this workflow answers a different question. Use them in combination rather than relying on any single measurement.
+
+<CardGroup cols={2}>
+  <Card title="ping" icon="signal">
+    The simplest latency tool available on every OS. Sends ICMP echo requests and reports round-trip time. Good for establishing a quick baseline and measuring jitter (standard deviation), but does not show where latency is being introduced along the path.
+  </Card>
+  <Card title="mtr" icon="route">
+    Combines traceroute and continuous ping into a single report. Shows every network hop between source and destination along with per-hop latency and packet loss. Invaluable for identifying whether a routing problem is inside your provider's network or outside it.
+  </Card>
+  <Card title="iperf3" icon="arrow-right-arrow-left">
+    Tests raw TCP/UDP bandwidth and jitter between two hosts. Use this when you suspect your server's uplink is saturated or when you want to measure the quality of a connection independently of Minecraft protocol overhead.
+  </Card>
+  <Card title="Spark (in-game)" icon="fire">
+    A Minecraft server profiler that measures real server-side performance metrics including MSPT (milliseconds per tick) and TPS (ticks per second). The only tool that measures actual server processing time — network tools alone cannot tell you whether lag is caused by the network or the server itself.
+  </Card>
+</CardGroup>
+
+## Step-by-Step Benchmark Workflow
+
+Run these steps in order — each one builds on the previous. Establish a full baseline before making any configuration changes, then re-run after each change to measure its isolated effect.
+
+<Steps>
+  <Step title="Baseline ICMP Ping">
+    Run a sustained ping from a machine located in the same region as your players. Use at least 100 samples to get a stable average and a meaningful jitter reading.
+
+    ```bash
+    ping -c 100 <server-ip>
+    # Look at avg (average round-trip time) and mdev (standard deviation = jitter)
+    ```
+
+    **What to record:**
+    - `min` — best-case latency; close to the theoretical minimum for this distance
+    - `avg` — the number your players experience under normal conditions
+    - `mdev` — standard deviation; high values indicate bufferbloat or inconsistent routing
+  </Step>
+  <Step title="Path Analysis with mtr">
+    Install `mtr` if it is not already present, then run a 100-cycle report to get statistically significant per-hop measurements.
+
+    ```bash
+    sudo apt install mtr
+    mtr --report --report-cycles 100 <server-ip>
+    # Look for hops with high Loss% or elevated Avg latency compared to the previous hop
+    ```
+
+    **How to read the output:**
+    - If loss appears on a middle hop but not the final hop, it is usually ICMP rate-limiting by that router — not a real problem
+    - If loss appears on the final hop (your server), it is a genuine packet loss issue
+    - A sudden jump in average latency at a specific hop identifies the bottleneck — report this to your provider if it is within their network
+  </Step>
+  <Step title="In-Game TPS and MSPT with Spark">
+    Install the [Spark profiler plugin](https://spark.lucko.me/) on your Paper server. These commands give you the server-side view of performance that no network tool can provide.
+
+    ```text
+    /spark tps
+    /spark mspt
+    # TPS should be 20.0; MSPT should be <50ms (ideally <25ms)
+    ```
+
+    Run these commands with players online and during normal gameplay activity — an empty server will always show perfect numbers regardless of configuration.
+  </Step>
+  <Step title="Server-Side Network Queue Check">
+    On the server itself, check the kernel's socket statistics for signs of connection buildup that could indicate network saturation or misconfigured timeouts.
+
+    ```bash
+    ss -s
+    # Look for large numbers in "timewait" or "closewait" states
+    # These may indicate connection handling issues or a SYN flood
+    ```
+
+    For a more detailed view of active connections:
+
+    ```bash
+    ss -tnp | grep java
+    # Shows all TCP connections belonging to the Java process running your server
+    ```
+  </Step>
+</Steps>
+
+## What Good Numbers Look Like
+
+Use this table as your reference when interpreting benchmark results. Numbers outside the "Target" column warrant investigation before applying further tuning — there is no point optimizing software when a routing or hardware problem is the real cause.
+
+| Metric | Target | Concern |
+|---|---|---|
+| ICMP ping avg | &lt;20ms (same region) | &gt;60ms = wrong region or routing issue |
+| ICMP ping mdev (jitter) | &lt;2ms | &gt;5ms = bufferbloat or packet loss |
+| In-game TPS | 20.0 | &lt;19.5 = server lag |
+| MSPT | &lt;25ms | &gt;50ms = serious main thread stall |
+| mtr packet loss | 0% | Any loss on end-to-end path = problem |
+
+<Tip>
+  Run benchmarks at peak player hours, not when the server is empty. An empty server always shows 20 TPS and perfect MSPT regardless of configuration. Load-dependent problems — entity buildup, chunk generation, plugin hooks — only appear when players are active.
+</Tip>
+
+<Note>
+  ICMP ping measures network latency only — it tells you nothing about server processing time. A server can show a 5ms ICMP ping while players experience 200ms in-game lag if the server's main thread is stalling. Always pair network benchmarks with `/spark mspt` for a complete picture.
+</Note>

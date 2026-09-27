@@ -1,0 +1,133 @@
+---
+title: "Choosing a Hosting Provider for Low Minecraft Ping"
+sidebarTitle: "Choosing a Provider"
+description: "Key criteria for selecting a dedicated or VPS host that minimizes physical network distance and routing hops to deliver the lowest possible Minecraft ping."
+---
+
+No amount of software tuning can overcome physical network distance. Choosing a data center close to your players is the single highest-impact decision for ping. A perfectly optimized JVM and kernel configuration running in the wrong region will always lose to a default-configured server running next door to its players. This page covers how to evaluate hosting providers through a latency-first lens so you start with the best possible foundation before touching a single config file.
+
+<Note>
+  **The golden rule:** Always choose the data center region closest to the majority of your players. A 10ms improvement from OS tuning cannot compensate for a 50ms penalty from a server hosted on the wrong continent.
+</Note>
+
+## What to Look For in a Provider
+
+Not all hosting plans are equal — marketing language like "high performance" and "game optimized" often obscures the underlying hardware class. Evaluate each plan against these six criteria before purchasing.
+
+<CardGroup cols={2}>
+  <Card title="Dedicated CPU" icon="microchip">
+    Avoid "shared" or "burstable" CPU plans. Minecraft's main thread is single-threaded and needs guaranteed clock cycles at all times. Burstable vCPUs throttle precisely when your server is under load — the worst possible moment.
+  </Card>
+  <Card title="NVMe SSD Storage" icon="hard-drive">
+    Chunk loading and world saves are latency-sensitive operations that happen constantly during gameplay. Spinning disk (HDD) storage causes I/O stalls that directly translate to lag spikes and TPS drops.
+  </Card>
+  <Card title="Low-Latency Network" icon="network-wired">
+    Look for providers that peer directly with major Internet Exchange Points such as DE-CIX, AMS-IX, and Equinix. Direct peering reduces the number of hops between your server and your players' ISPs, lowering both average latency and jitter.
+  </Card>
+  <Card title="DDoS Protection" icon="shield">
+    Game servers are among the most common DDoS targets on the internet. Look for providers with upstream traffic scrubbing built into their network — for example OVH VAC or Path.net mitigation. Do not rely on software firewalls alone.
+  </Card>
+  <Card title="Unmetered or High Bandwidth" icon="gauge">
+    A 20-player server consumes roughly 2–5 Mbps of sustained bandwidth. A 100 Mbps unmetered port is more than sufficient, but ensure the provider does not enforce hidden burst limits or traffic shaping that kicks in during spikes.
+  </Card>
+  <Card title="Linux KVM or Bare Metal" icon="server">
+    Avoid OpenVZ and LXC-based VPS plans. These container-based virtualization technologies share a kernel with the host and frequently restrict the `sysctl` parameters required for network and memory tuning described in this guide.
+  </Card>
+</CardGroup>
+
+## Provider Type Comparison
+
+Different hosting tiers make different tradeoffs between latency, control, and cost. The table below summarizes how each type maps to typical Minecraft use cases.
+
+| Provider Type | Latency | Control | Cost | Best For |
+|---|---|---|---|---|
+| Bare Metal Dedicated | Lowest | Full | High | High-player-count, maximum performance |
+| KVM VPS (dedicated core) | Low | High (sysctl allowed) | Medium | Most small-medium servers |
+| Shared/Panel Hosting | Variable | Low | Low | Casual/small servers only |
+| Cloud VM (AWS/GCP) | Medium-High | High | High | Not recommended for game servers |
+
+## Region Selection Guide
+
+Pick the tab that matches where the majority of your player base is located. If your players are evenly split across regions, see the Global tab for a multi-node proxy approach.
+
+<Tabs>
+  <Tab title="North America">
+    For North American players, prioritize data centers in the eastern US for the broadest reach, or select based on where your players are concentrated.
+
+    **Recommended providers and locations:**
+    - **OVH Canada (Beauharnois / BHS)** — excellent transatlantic and North American routing
+    - **Hetzner US (Ashburn, Virginia)** — strong IXP peering, competitive pricing
+    - **Vultr (New York, Chicago, Dallas)** — broad regional coverage, per-hour billing good for testing
+
+    **Target cities by player region:**
+    - East Coast US/Canada → New York, Ashburn, or Montreal
+    - Central US → Chicago or Dallas
+    - West Coast US → Los Angeles or Seattle
+  </Tab>
+  <Tab title="Europe">
+    Europe has some of the most competitive dedicated and VPS hosting markets in the world, with strong IXP infrastructure across Germany, France, and Finland.
+
+    **Recommended providers and locations:**
+    - **Hetzner (Falkenstein, Nuremberg, Helsinki)** — best price-to-performance in Europe, direct DE-CIX and AMS-IX peering
+    - **OVH (Roubaix, Strasbourg)** — strong DDoS mitigation via OVH VAC, wide range of dedicated tiers
+    - **Contabo (Germany)** — budget-friendly option for small servers; limited IXP peering compared to Hetzner/OVH
+
+    **Target locations by player region:**
+    - Western/Central Europe → Frankfurt, Nuremberg, or Strasbourg
+    - Northern Europe → Helsinki or Stockholm
+    - Eastern Europe → Warsaw or Frankfurt
+  </Tab>
+  <Tab title="Asia Pacific">
+    The Asia Pacific region has fewer large IXPs than Europe or North America, so provider selection has an outsized impact on routing quality.
+
+    **Recommended providers and locations:**
+    - **Vultr (Singapore, Tokyo)** — reliable peering, good coverage of Southeast Asia and Japan
+    - **OVH (Singapore)** — solid DDoS protection, direct regional peering
+    - **Contabo (Singapore)** — affordable entry point for Southeast Asian player bases
+
+    **Target locations by player region:**
+    - Southeast Asia → Singapore
+    - Japan/Korea → Tokyo
+    - Australia → Sydney (limited dedicated options; Vultr or AWS Lightsail are pragmatic fallbacks)
+  </Tab>
+  <Tab title="Global">
+    If your players span multiple continents, a single server will always result in high latency for part of your audience. The standard solution is to run regional nodes connected through a proxy network.
+
+    **Recommended architecture:**
+    - Deploy lightweight **BungeeCord** or **Velocity** proxy instances in each major player region
+    - Run dedicated game server nodes in each region (or a central node for shared game state)
+    - Players connect to their nearest proxy, which forwards traffic to the backend server over an optimized inter-datacenter link
+
+    **Provider combinations that work well:**
+    - Europe backend (Hetzner Falkenstein) + North America proxy (OVH BHS) + Asia proxy (Vultr Singapore)
+    - All three connected via a WireGuard VPN tunnel for secure inter-node communication
+
+    This approach is more operationally complex but is the only way to deliver sub-60ms ping globally.
+  </Tab>
+</Tabs>
+
+## How to Test a Provider Before Buying
+
+Most reputable providers offer a "Looking Glass" portal or a public test IP you can ping before committing to a plan. Use these to validate latency from your players' actual locations.
+
+1. Find the provider's Looking Glass or test IP (usually listed on their network info page)
+2. Run a ping from a machine geographically close to your players:
+   ```bash
+   ping -c 50 <provider-test-ip>
+   # Review avg (average latency) and mdev (jitter)
+   ```
+3. Use a latency map tool such as [https://ping.canopy.tools](https://ping.canopy.tools) to visualize round-trip times from multiple vantage points simultaneously
+4. Ask players in your community to run a ping test to the provider's test IP before you purchase
+
+**Target thresholds:**
+- Same-country players: **&lt;20ms**
+- Same-continent players: **&lt;60ms**
+- Cross-continent players: **&lt;120ms** (acceptable only if no better option exists)
+
+<Warning>
+  Avoid major cloud providers (AWS EC2, GCP Compute Engine, Azure VMs) for game servers. They use virtualized networking stacks with higher baseline latency than bare metal, apply aggressive traffic shaping, and typically restrict raw socket access. The cost per core is also significantly higher than equivalent dedicated or KVM VPS options.
+</Warning>
+
+<Tip>
+  Hetzner dedicated and Hetzner Cloud offer some of the best price-to-performance ratios in Europe, with direct IXP peering at DE-CIX and AMS-IX. OVH Bare Metal is a strong choice for both North America (via their Canadian data centers) and Europe, with the added benefit of OVH VAC DDoS mitigation included on all plans.
+</Tip>

@@ -1,0 +1,47 @@
+---
+title: "ServerHoster: Low-Latency Minecraft Java Server Guide"
+sidebarTitle: "Home"
+description: "Your complete guide to building a minimal-ping, highly optimized Minecraft Java 1.21.1 server using Paper, ViaVersion, and Linux OS tuning."
+---
+
+Welcome to ServerHoster — the definitive guide to running a Minecraft Java Edition server with the absolute lowest latency possible. Whether you are hosting a private realm for friends or a public network for hundreds of players, this guide walks you through every layer of the stack: from choosing Paper as your server software and tuning the Java 21 runtime, all the way down to Linux kernel parameters and hardware-aware hosting decisions. Follow every step and your players will notice the difference in milliseconds.
+
+<CardGroup cols={2}>
+  <Card title="Overview" icon="map" href="/introduction">
+    Understand the philosophy behind this guide and how each optimization layer — software, configuration, OS, and hosting — contributes to a low-latency experience.
+  </Card>
+  <Card title="Requirements" icon="clipboard-check" href="/requirements">
+    Review the hardware, operating system, and software prerequisites before you spin up your first server instance.
+  </Card>
+  <Card title="Paper Setup" icon="server" href="/server-software/paper">
+    Download, install, and configure Paper 1.21.1 — the high-performance fork of Spigot that forms the core of every setup in this guide.
+  </Card>
+  <Card title="Configuration" icon="sliders" href="/configuration/server-properties">
+    Tune `server.properties`, `bukkit.yml`, `spigot.yml`, and `paper-global.yml` for maximum tick efficiency and minimal network overhead.
+  </Card>
+  <Card title="OS & Network Tuning" icon="network-wired" href="/optimization/linux-network">
+    Apply Linux `sysctl` tweaks, IRQ affinity settings, and network queue parameters that shave milliseconds off every player's ping.
+  </Card>
+  <Card title="Hosting Tips" icon="cloud" href="/hosting/choosing-a-provider">
+    Pick the right data-center region, CPU generation, and network uplink so your optimized software stack is never bottlenecked by the hardware beneath it.
+  </Card>
+</CardGroup>
+
+## Get Started in Four Steps
+
+You can go from a blank Linux server to a fully tuned Minecraft instance in under an hour. The steps below follow the same order as the rest of this guide — complete them in sequence for best results.
+
+<Steps>
+  <Step title="Check Requirements">
+    Confirm your server meets the minimum hardware and software requirements before installing anything. Pay close attention to the recommended Java 21 version and Linux kernel baseline documented in the [Requirements](/requirements) page.
+  </Step>
+  <Step title="Install Paper">
+    Download the latest Paper 1.21.1 build, accept the EULA, and verify the server starts cleanly before applying any configuration changes. The [Paper Setup](/server-software/paper) page covers the full installation process including recommended JVM flags for Java 21.
+  </Step>
+  <Step title="Apply Configuration">
+    Work through each configuration file — `server.properties`, `bukkit.yml`, `spigot.yml`, and `paper-global.yml` — using the recommended values from the [Configuration](/configuration/server-properties) page. Every setting is explained so you understand the trade-off you are making.
+  </Step>
+  <Step title="Tune the OS">
+    Apply the Linux network and kernel tuning parameters described in the [OS & Network](/optimization/linux-network) page. These changes persist across reboots and deliver the final layer of latency reduction that no software-level tweak can replicate.
+  </Step>
+</Steps>

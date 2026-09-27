@@ -1,0 +1,68 @@
+---
+title: "System Requirements for a High-Performance Minecraft Server"
+sidebarTitle: "Requirements"
+description: "Review hardware, operating system, and Java 21 prerequisites before building your low-latency Paper Minecraft Java 1.21.1 server on Linux."
+---
+
+Meeting these system requirements is the foundation of low latency. Before investing time in software-level tuning — JVM flags, Paper configuration, or kernel parameters — your hardware and operating system must be capable of sustaining the workload that a busy Minecraft server demands. Cutting corners here will create a performance ceiling that no amount of configuration can break through. Use the tables and guidance below to verify your setup before proceeding with the rest of this guide.
+
+## Hardware
+
+Minecraft's main game loop is largely single-threaded, which means raw single-core performance is the single biggest hardware factor for tick latency. More cores help with async tasks such as chunk generation and I/O, but they will not rescue a slow main thread.
+
+| Component | Minimum | Recommended |
+|-----------|---------|-------------|
+| CPU | 4-core @ 3.5 GHz | 8-core @ 4.5+ GHz (high single-thread IPC) |
+| RAM | 4 GB | 8–16 GB (10 GB allocated to JVM) |
+| Storage | HDD | NVMe SSD (chunk I/O is latency-sensitive) |
+| Network | 100 Mbps | 1 Gbps dedicated uplink |
+| OS | Ubuntu 20.04 LTS | Ubuntu 22.04 / 24.04 LTS (64-bit) |
+
+<Tip>
+  Single-core CPU speed matters far more than core count for Minecraft's main thread. A modern 6-core processor with high per-core IPC will outperform an older 16-core server chip with lower clock speeds in nearly every server workload scenario.
+</Tip>
+
+## Java Version
+
+Paper 1.21.1 requires **Java 21** as a minimum. Java 21 is a Long-Term Support (LTS) release and brings significant improvements to the G1GC and ZGC garbage collectors, virtual threads, and overall JVM throughput — all of which directly benefit server performance and GC pause times. Do not use Java 17 or any earlier version; the server will refuse to start.
+
+Install the headless JDK on Ubuntu with the following commands:
+
+```bash
+sudo apt update && sudo apt install -y openjdk-21-jdk-headless
+java -version
+```
+
+The output of `java -version` should confirm `openjdk version "21"` or higher. If another Java version is reported, use `sudo update-alternatives --config java` to select the correct installation.
+
+<Note>
+  The `-headless` variant omits GUI libraries that a server never needs, keeping the installation lean. Use `openjdk-21-jdk-headless` rather than the full `openjdk-21-jdk` package on any dedicated server host.
+</Note>
+
+## Operating System
+
+Ubuntu **22.04 LTS** or **24.04 LTS** (64-bit) is the recommended operating system for this guide. Both releases ship with up-to-date kernel versions that support all of the network and scheduler tuning covered in later sections. Ubuntu 20.04 LTS remains a supported minimum but does not receive the same kernel backport cadence and should be upgraded when possible.
+
+<Info>
+  The `sysctl` tweaks, TCP BBR congestion control configuration, and IRQ affinity tuning described in this guide are **Linux-specific**. If you are running Windows Server or macOS, those sections will not apply and the equivalent adjustments — where they exist — will differ significantly.
+</Info>
+
+## Required Network Ports
+
+Open the following ports on both your host firewall (`ufw` or `iptables`) and any upstream network firewall or cloud security group. Keeping unnecessary ports closed reduces attack surface.
+
+| Port | Protocol | Purpose |
+|------|----------|---------|
+| 25565 | TCP | Minecraft game traffic |
+| 25575 | TCP | RCON (optional, disable if unused) |
+| 22 | TCP | SSH admin access |
+
+<Warning>
+  Do **not** run the Minecraft server process as `root`. Create a dedicated system user with no login shell and no sudo privileges. This limits the blast radius of any exploit that achieves remote code execution through the server process.
+
+  ```bash
+  sudo useradd -r -m -s /usr/sbin/nologin minecraft
+  ```
+
+  All server files, the JVM binary invocation, and any systemd service unit should operate under this `minecraft` user account.
+</Warning>

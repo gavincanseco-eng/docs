@@ -1,0 +1,46 @@
+---
+title: "Linux Network Stack Optimization for Minecraft Servers"
+sidebarTitle: "Linux Networking"
+description: "An overview of Linux kernel networking concepts and why tuning TCP buffers, socket queues, and congestion control reduces Minecraft server latency."
+---
+
+Minecraft's game traffic is a continuous stream of small TCP packets — chunk data, entity updates, player positions, and chat messages all flow through the same socket. The Linux network stack ships with conservative defaults tuned for general-purpose workloads: web servers, file transfers, and desktop use. These defaults are not designed for the low-latency, connection-heavy demands of a game server. Tuning a targeted set of kernel parameters meaningfully reduces MSPT jitter and player-perceived ping, particularly during peak player activity and burst join events.
+
+## What affects Minecraft network latency
+
+<CardGroup cols={2}>
+  <Card title="TCP Buffer Sizes" icon="database">
+    Too-small send and receive buffers force the kernel to flush socket data more often than necessary, causing frequent context switches between kernel space and user space. Increasing `rmem_max` and `wmem_max` gives the TCP stack room to batch data efficiently without stalling the JVM thread waiting for buffer space.
+  </Card>
+  <Card title="Congestion Control" icon="chart-line">
+    Linux defaults to the CUBIC congestion control algorithm, which infers network congestion from packet loss events. This causes it to bloat router buffers before backing off, producing elevated and jittery ping. BBR outperforms CUBIC for non-bulk game traffic by modelling available bandwidth and RTT directly, keeping buffers lean and latency stable.
+  </Card>
+  <Card title="Connection Queuing" icon="list-ol">
+    When multiple players attempt to connect at the same time — such as at server open or after a restart — the kernel must queue those incoming SYN packets and completed connections before the JVM's `accept()` call can process them. `somaxconn` and `netdev_max_backlog` control the depth of these queues. Under-sized queues silently drop connections during join bursts, causing players to see "Connection refused" or timeout errors.
+  </Card>
+  <Card title="Interrupt Coalescing" icon="microchip">
+    On dedicated hardware, how often the NIC raises CPU interrupts to signal incoming packets directly affects packet delivery timing. NIC IRQ affinity (pinning interrupt handling to specific CPU cores) and coalescing settings (batching multiple packets per interrupt) can smooth out packet delivery at the cost of a small amount of additional latency per batch. This is most relevant on high-player-count servers with heavy sustained traffic.
+  </Card>
+</CardGroup>
+
+## The tuning workflow
+
+<Steps>
+  <Step title="Apply sysctl parameters">
+    The majority of the network stack improvements are made through the kernel's `sysctl` interface. This covers TCP buffer sizes, connection queue depths, keepalive timing, and congestion control algorithm selection. Follow the [sysctl Configuration](/optimization/sysctl) page for the full parameter set and how to apply it persistently.
+  </Step>
+  <Step title="Enable BBR congestion control">
+    BBR requires loading a kernel module in addition to setting the sysctl value. The [BBR page](/optimization/bbr-congestion-control) walks through verifying your kernel version, loading the module at boot, and confirming BBR is active on live connections.
+  </Step>
+  <Step title="Optionally tune NIC IRQ affinity">
+    On dedicated (bare-metal) servers with high player counts, consider pinning NIC interrupt handling to CPU cores that are not used by the Minecraft JVM process. This prevents network interrupts from preempting the server thread. Use `ethtool -l <interface>` to inspect combined queue counts and `irqbalance` or manual `/proc/irq/` assignments to pin them. This step is generally unnecessary on VPS or cloud instances where the hypervisor manages IRQ routing.
+  </Step>
+</Steps>
+
+<Note>
+  All `sysctl` changes described in this guide require root or `sudo` access. Changes applied with `sysctl -w` on the command line take effect immediately but are lost on reboot. To make them persistent, write them to a file under `/etc/sysctl.d/` — the recommended approach is `/etc/sysctl.d/99-minecraft.conf`. These parameters tune kernel behaviour for network I/O only and do **not** affect normal application logic or user-space program behaviour.
+</Note>
+
+<Info>
+  On shared hosting or VPS environments, some `sysctl` parameters may be restricted or read-only because the hypervisor enforces a fixed kernel configuration across all tenants. If you receive a "permission denied" or "read-only" error when applying a parameter, your hosting provider controls that setting at the host level. Contact your provider to ask which parameters are adjustable in your plan, or whether a dedicated/KVM instance gives you full kernel access.
+</Info>

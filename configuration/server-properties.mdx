@@ -1,0 +1,81 @@
+---
+title: "server.properties: Optimized Settings for Low Latency"
+sidebarTitle: "server.properties"
+description: "The exact server.properties settings to minimize network overhead, control view distance, and harden your Minecraft 1.21.1 Paper server."
+---
+
+`server.properties` is the primary server configuration file. These settings are tuned specifically to reduce network and tick overhead. Every value below has been chosen to balance performance and playability — avoid changing them without understanding the trade-offs described in the table that follows.
+
+```properties server.properties
+# Network
+server-ip=
+server-port=25565
+online-mode=true
+network-compression-threshold=256
+use-native-transport=true
+prevent-proxy-connections=false
+rate-limit=0
+
+# Performance
+view-distance=8
+simulation-distance=6
+max-players=20
+max-tick-time=60000
+entity-broadcast-range-percentage=75
+max-chained-neighbor-updates=1000000
+sync-chunk-writes=false
+
+# World
+level-name=world
+level-type=minecraft:normal
+generator-settings={}
+spawn-protection=16
+force-gamemode=false
+hardcore=false
+difficulty=easy
+gamemode=survival
+generate-structures=true
+
+# Security & Misc
+enforce-secure-profile=true
+enforce-whitelist=false
+white-list=false
+op-permission-level=4
+broadcast-console-to-ops=true
+broadcast-rcon-to-ops=true
+enable-rcon=false
+rcon.port=25575
+rcon.password=
+enable-query=false
+query.port=25565
+log-ips=true
+
+# Player
+player-idle-timeout=0
+hide-online-players=false
+pause-when-empty-seconds=60
+motd=A Minecraft Server
+```
+
+## Critical Settings Explained
+
+The table below covers every setting that meaningfully affects performance, security, or network behaviour. Defaults not listed here are safe to leave as-is.
+
+| Setting | Value | Reason |
+|---|---|---|
+| `network-compression-threshold` | `256` | Compress packets ≥256 bytes — balances CPU vs bandwidth |
+| `use-native-transport` | `true` | Uses Netty's optimized native epoll on Linux |
+| `view-distance` | `8` | Fewer chunks sent = less network traffic and CPU |
+| `simulation-distance` | `6` | Limits active mob AI/physics radius (ticks saved) |
+| `sync-chunk-writes` | `false` | Async chunk saving prevents I/O stalls on the main thread |
+| `entity-broadcast-range-percentage` | `75` | Reduces entity packets sent to distant players |
+| `online-mode` | `true` | Always keep true — auth prevents abuse |
+| `enable-rcon` | `false` | Disable RCON if unused to reduce attack surface |
+
+<Tip>
+  If your players are on a high-bandwidth LAN or fast fiber, you can raise `network-compression-threshold` to `512` or even `-1` (disable) to trade bandwidth for lower CPU usage.
+</Tip>
+
+<Warning>
+  Setting `view-distance` too low (below 6) will frustrate players. 8 is the recommended performance/experience sweet spot.
+</Warning>

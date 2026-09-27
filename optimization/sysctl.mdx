@@ -1,0 +1,110 @@
+---
+title: "sysctl.conf TCP/IP Tuning for Low-Latency Minecraft"
+sidebarTitle: "sysctl Tuning"
+description: "Apply these Linux sysctl network parameters to reduce TCP latency, optimize socket buffers, and improve connection stability for your Minecraft server."
+---
+
+`sysctl` is the Linux kernel parameter interface — it exposes a live, writable view of hundreds of kernel tunables through the `/proc/sys/` virtual filesystem. The parameters below tune the TCP/IP stack specifically for low-latency, connection-heavy game server workloads. Each value has been chosen to reduce socket stalls, speed up dead-connection detection, and keep the JVM heap in RAM rather than swap.
+
+## Apply the configuration
+
+<Steps>
+  <Step title="Create a drop-in config file">
+    Using a dedicated file under `/etc/sysctl.d/` keeps your changes isolated from the system default `/etc/sysctl.conf` and ensures they load automatically on boot.
+
+    ```bash
+    sudo nano /etc/sysctl.d/99-minecraft.conf
+    ```
+  </Step>
+  <Step title="Paste the full configuration">
+    Copy the entire block below into the file, then save and exit (`Ctrl+O`, `Enter`, `Ctrl+X` in nano).
+
+    ```ini /etc/sysctl.d/99-minecraft.conf
+    # ─── Minecraft Server TCP/IP Optimization ───────────────────────────────────
+    # Apply with: sudo sysctl -p /etc/sysctl.d/99-minecraft.conf
+
+    # ── TCP Socket Buffers ───────────────────────────────────────────────────────
+    # Increase max receive and send buffer sizes (bytes)
+    net.core.rmem_max = 16777216
+    net.core.wmem_max = 16777216
+    net.core.rmem_default = 262144
+    net.core.wmem_default = 262144
+
+    # TCP auto-tuning buffer limits (min / default / max in bytes)
+    net.ipv4.tcp_rmem = 4096 87380 16777216
+    net.ipv4.tcp_wmem = 4096 65536 16777216
+
+    # ── Connection Handling ──────────────────────────────────────────────────────
+    # Maximum number of connections queued before accept()
+    net.core.somaxconn = 4096
+
+    # Increase network device input queue length
+    net.core.netdev_max_backlog = 16384
+
+    # Maximum number of half-open SYN connections
+    net.ipv4.tcp_max_syn_backlog = 4096
+
+    # ── Latency Tuning ───────────────────────────────────────────────────────────
+    # Disable TCP slow start after idle (keep throughput high for burst joins)
+    net.ipv4.tcp_slow_start_after_idle = 0
+
+    # Reduce TIME_WAIT socket reuse time
+    net.ipv4.tcp_tw_reuse = 1
+
+    # Enable TCP Fast Open for client and server
+    net.ipv4.tcp_fastopen = 3
+
+    # Lower TCP keepalive interval (detect dead connections faster)
+    net.ipv4.tcp_keepalive_time = 60
+    net.ipv4.tcp_keepalive_intvl = 10
+    net.ipv4.tcp_keepalive_probes = 6
+
+    # ── Congestion Control ───────────────────────────────────────────────────────
+    # Use BBR congestion control (see BBR page)
+    net.core.default_qdisc = fq
+    net.ipv4.tcp_congestion_control = bbr
+
+    # ── Memory & Resource Limits ─────────────────────────────────────────────────
+    # Increase virtual memory map limit (required for large Java heaps)
+    vm.max_map_count = 262144
+
+    # Reduce swappiness — keep Minecraft heap in RAM
+    vm.swappiness = 10
+    ```
+  </Step>
+  <Step title="Apply immediately without rebooting">
+    Load the new values into the running kernel. You do not need to restart your Minecraft server for network parameters to take effect.
+
+    ```bash
+    sudo sysctl -p /etc/sysctl.d/99-minecraft.conf
+    ```
+  </Step>
+  <Step title="Verify a key value">
+    Spot-check one of the applied parameters to confirm the kernel accepted it correctly.
+
+    ```bash
+    sysctl net.core.rmem_max
+    # Expected: net.core.rmem_max = 16777216
+    ```
+  </Step>
+</Steps>
+
+## Parameter explanation
+
+| Parameter | Value | Why |
+|---|---|---|
+| `net.core.rmem_max` | `16777216` | 16 MB max receive buffer per socket — prevents kernel from stalling on busy connections |
+| `net.core.somaxconn` | `4096` | Handles burst player joins without silently dropping queued connections |
+| `tcp_slow_start_after_idle` | `0` | Prevents TCP throughput from dropping after brief quiet periods between player actions |
+| `tcp_fastopen` | `3` | Reduces handshake RTT for reconnecting players by piggybacking data on the SYN |
+| `tcp_keepalive_time` | `60` | Detects disconnected or ghost players in 60 seconds rather than the default 2 hours |
+| `vm.swappiness` | `10` | Strongly prefers keeping heap pages in RAM; only swaps under genuine memory pressure |
+| `vm.max_map_count` | `262144` | Required for large JVM heaps above 8 GB; prevents `mmap` exhaustion errors at startup |
+
+<Warning>
+  Do **not** set `vm.swappiness=0`. A value of `0` instructs the kernel to avoid swap so aggressively that it will invoke the OOM (Out of Memory) killer when memory pressure spikes — and the JVM process, with its large heap, is a prime target. Use `10` instead: it strongly de-prioritises swap while still allowing the kernel to use it as a last resort before killing processes.
+</Warning>
+
+<Tip>
+  Before applying, check each parameter's current value with `sysctl <parameter.name>` — for example, `sysctl net.core.rmem_max`. Recording the before values takes thirty seconds and makes it trivial to roll back a specific setting if you observe unexpected behaviour after applying the configuration.
+</Tip>

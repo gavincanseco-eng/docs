@@ -1,0 +1,83 @@
+{
+  "$schema": "https://mintlify.com/docs.json",
+  "theme": "aspen",
+  "name": "ServerHoster",
+  "colors": {
+    "primary": "#4CAF50",
+    "light": "#81C784",
+    "dark": "#2E7D32"
+  },
+  "favicon": "/favicon.svg",
+  "navigation": {
+    "tabs": [
+      {
+        "tab": "Setup Guide",
+        "groups": [
+          {
+            "group": "Introduction",
+            "pages": [
+              "introduction",
+              "requirements"
+            ]
+          },
+          {
+            "group": "Server Software",
+            "pages": [
+              "server-software/paper",
+              "server-software/viaversion",
+              "server-software/performance-plugins"
+            ]
+          },
+          {
+            "group": "Configuration",
+            "pages": [
+              "configuration/server-properties",
+              "configuration/paper-global",
+              "configuration/paper-world",
+              "configuration/startup-flags"
+            ]
+          },
+          {
+            "group": "OS & Network Tuning",
+            "pages": [
+              "optimization/linux-network",
+              "optimization/sysctl",
+              "optimization/bbr-congestion-control"
+            ]
+          },
+          {
+            "group": "Hosting & Operations",
+            "pages": [
+              "hosting/choosing-a-provider",
+              "hosting/benchmarking-ping",
+              "hosting/maintenance"
+            ]
+          },
+          {
+            "group": "Troubleshooting",
+            "pages": [
+              "troubleshooting/lag-diagnosis",
+              "troubleshooting/common-issues"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "navbar": {
+    "links": [
+      {
+        "label": "PaperMC",
+        "href": "https://papermc.io/"
+      }
+    ],
+    "primary": {
+      "type": "button",
+      "label": "Download Paper",
+      "href": "https://papermc.io/downloads/paper"
+    }
+  },
+  "footer": {
+    "socials": {}
+  }
+}

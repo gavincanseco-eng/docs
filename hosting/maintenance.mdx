@@ -1,0 +1,132 @@
+---
+title: "Minecraft Server Maintenance for Sustained Performance"
+sidebarTitle: "Maintenance"
+description: "Routine maintenance tasks — updating Paper, trimming world files, monitoring TPS, and reviewing logs — to keep your server running at peak performance."
+---
+
+A well-tuned server degrades over time without routine maintenance. World files grow unbounded as players explore new chunks, plugins accumulate technical debt between updates, and entity counts creep upward as mobs and dropped items pile up in loaded chunks. The optimizations described elsewhere in this guide establish a performance ceiling — routine maintenance is what keeps you close to that ceiling week after week. This page covers the recurring tasks that sustain performance over the long life of a server.
+
+## Maintenance Schedule
+
+Spreading maintenance across different frequencies keeps each session manageable while ensuring nothing critical goes unattended for too long.
+
+| Frequency | Task |
+|---|---|
+| Daily | Check TPS with `/spark tps`; review console for errors or warnings |
+| Weekly | Update Paper JAR and plugins; review entity counts with `/spark entities` |
+| Monthly | Trim unused world regions (see below); perform a full verified backup |
+| Per update | Review Paper and plugin changelogs carefully before applying any update |
+
+## Updating Paper
+
+Paper releases frequent builds that include performance improvements, bug fixes, and security patches. Staying current is one of the highest-value maintenance tasks you can perform, but updates must always follow a safe, ordered procedure.
+
+<Warning>
+  Never update Paper mid-session while players are online. Always stop the server fully, back it up, then apply the update. Rolling back a bad update without a backup is not possible.
+</Warning>
+
+<Steps>
+  <Step title="Stop the Server Gracefully">
+    Always allow the server to complete its shutdown sequence so chunk data and player inventories are written to disk cleanly. Never use `kill -9` or forcibly terminate the process.
+
+    ```bash
+    # From in-game or via RCON:
+    /stop
+
+    # Or send SIGTERM from the shell to allow a clean shutdown:
+    kill -SIGTERM $(pgrep -f paper.jar)
+    ```
+
+    Wait for the process to exit fully before proceeding. You can confirm with `pgrep -f paper.jar` — it should return no output once the server has stopped.
+  </Step>
+  <Step title="Back Up the World Directory">
+    Create a timestamped compressed archive of all three world dimensions before touching the JAR file. This backup is your rollback point if the new build introduces a regression.
+
+    ```bash
+    tar -czf backup-$(date +%Y%m%d).tar.gz world/ world_nether/ world_the_end/
+    ```
+
+    Store the backup on a separate disk or remote location. A backup stored on the same disk as the server offers no protection against disk failure.
+  </Step>
+  <Step title="Download the New Paper Build">
+    Use the PaperMC API to fetch the latest build for your target Minecraft version. Replace `1.21.1` with your current version if needed.
+
+    ```bash
+    wget https://api.papermc.io/v2/projects/paper/versions/1.21.1/builds/LATEST/downloads/paper-1.21.1-LATEST.jar -O paper.jar
+    ```
+
+    Verify the downloaded file is not empty and matches the expected size listed in the PaperMC build notes before proceeding.
+  </Step>
+  <Step title="Restart the Server">
+    Start the server using your existing startup script so that all JVM flags and memory settings are applied consistently.
+
+    ```bash
+    ./start.sh
+    ```
+
+    Monitor the console output during startup for any warnings about incompatible plugins or configuration changes introduced by the new build. Check TPS and MSPT once players reconnect to confirm stable performance.
+  </Step>
+</Steps>
+
+## World Trimming with Chunky
+
+As players explore, Minecraft generates and saves chunks that may never be visited again. These unused regions consume disk space and — more critically — inflate the I/O surface area during auto-saves, which runs on a fixed schedule regardless of how many of those chunks contain active content.
+
+Install the [Chunky plugin](https://www.spigotmc.org/resources/chunky.81534/) and use its trim command to remove chunks that fall outside your defined world border radius.
+
+```text
+# Run in-game or via RCON:
+/chunky trim world
+# Removes unused chunks outside the defined world border radius
+# Repeat for world_nether and world_the_end as needed
+```
+
+After trimming, restart the server and run a full backup. Trimming is a destructive operation — any player builds outside the defined radius will be deleted. Always communicate the trim radius to your community before running this command.
+
+## Entity Count Monitoring
+
+Accumulated mobs, item frames, falling blocks, minecarts, and dropped items are the single most common cause of long-term performance degradation on established servers. These entities accumulate silently over weeks and can cut TPS in half without any single obvious cause.
+
+Use Spark's entity report to identify where entity counts are highest and which entity types are responsible.
+
+```text
+# Run in-game:
+/spark entities
+# Outputs a breakdown of loaded entities by type and by chunk
+# Focus on chunks with unusually high entity counts — these are your hotspots
+```
+
+**Common sources of entity buildup to address:**
+- Item farms that produce dropped items faster than hoppers collect them
+- Mob farms with overflow due to spawn cap issues
+- Decorative item frames in large numbers (each frame is a loaded entity)
+- Villager trading halls with uncontrolled breeding
+
+Address the root cause rather than relying on periodic `/kill @e[type=item]` commands, which are a band-aid that must be reapplied indefinitely.
+
+## Backup Strategy
+
+Backups are not optional. A single corrupted world file, a bad plugin update, or an accidental `/op` command given to the wrong player can cause irreversible damage without a recent backup to restore from.
+
+**Minimum recommended backup policy:**
+- Daily automated world backup to a separate disk or remote storage location
+- Retain the last **7 daily backups** and **4 weekly backups**
+- Test restoration from backup at least once — a backup you have never tested is an untested assumption
+
+The following cron job creates a compressed daily backup of the world directory at 3:00 AM server time. Add it with `crontab -e`.
+
+```bash
+# Daily world backup at 3:00 AM
+0 3 * * * tar -czf /backups/world-$(date +\%Y\%m\%d).tar.gz /home/minecraft/server/world/
+```
+
+For automatic rotation that deletes backups older than 7 days, add a cleanup line:
+
+```bash
+# Delete daily backups older than 7 days
+0 4 * * * find /backups/ -name "world-*.tar.gz" -mtime +7 -delete
+```
+
+<Tip>
+  Subscribe to the PaperMC Discord announcements channel to receive notifications about critical security patches and major build releases. Some security patches are time-sensitive and should be applied within hours of release — waiting for your regular weekly update window is not appropriate for those cases.
+</Tip>

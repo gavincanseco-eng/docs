@@ -1,0 +1,104 @@
+---
+title: "Install and Configure Paper for Minecraft Java 1.21.1"
+sidebarTitle: "Paper"
+description: "Download and install PaperMC for Minecraft 1.21.1. Async chunk I/O and entity tracking cut main-thread tick overhead for a noticeably smoother server."
+---
+
+Paper is a high-performance fork of Spigot that has become the de-facto standard for serious Minecraft Java server operators. Unlike vanilla, which processes chunk I/O and entity tracking synchronously on the main thread, Paper offloads chunk loading and saving to separate threads, dramatically reducing the tick time spikes that vanilla servers suffer during heavy exploration or world generation. On top of async chunk I/O, Paper ships with optimized entity tracking, configurable simulation distances per world, a faster implementation of the lighting engine, and a steady cadence of security patches backported from upstream — all of which combine to give players a noticeably smoother experience even as the player count scales.
+
+## Why Not Vanilla or Spigot?
+
+Choosing the right server jar is the single most impactful performance decision you will make. The table below summarises the trade-offs across the three most common options.
+
+<Tabs>
+  <Tab title="Vanilla">
+    **Pros**
+    - Pixel-perfect Mojang behavior — zero deviation from the intended game
+    - No third-party code in the execution path
+    - Simplest possible setup for private, single-player-style servers
+
+    **Cons**
+    - All chunk I/O runs synchronously on the main tick thread
+    - No plugin API — extensibility requires mods (Fabric/Forge), which add their own complexity
+    - No configuration knobs for tick rates, view distance, or entity limits
+    - Performance degrades quickly beyond 10–15 concurrent players
+  </Tab>
+  <Tab title="Spigot">
+    **Pros**
+    - Adds the Bukkit/Spigot plugin API — compatible with thousands of plugins
+    - Introduces `spigot.yml` tuning options (entity activation ranges, merge radius, etc.)
+    - Widely supported and battle-tested over many years
+
+    **Cons**
+    - Chunk I/O is still largely synchronous — main-thread stalls persist under load
+    - Development pace has slowed; some optimizations lag behind Paper
+    - Must be built locally via BuildTools — no direct binary download
+    - Fewer upstream security patches compared to Paper
+  </Tab>
+  <Tab title="Paper">
+    **Pros**
+    - Async chunk loading and saving keeps the main thread free during disk I/O
+    - Optimized entity tracking reduces CPU cost as entity counts grow
+    - Configurable simulation distance and tick rates via `paper-world.yml`
+    - Direct binary downloads from papermc.io — no build step required
+    - Active security patching and frequent upstream merges
+    - Full Bukkit/Spigot plugin compatibility
+
+    **Cons**
+    - Minor vanilla parity deviations (most are toggleable in `paper-global.yml`)
+    - Slightly more configuration surface area to learn compared to vanilla
+  </Tab>
+</Tabs>
+
+## Download and Install
+
+<Steps>
+  <Step title="Download the Paper JAR">
+    Visit [https://papermc.io/downloads/paper](https://papermc.io/downloads/paper) and download the latest build for **Minecraft 1.21.1**. The build number is displayed on the page — always take the highest available build for the most recent bug fixes.
+  </Step>
+  <Step title="Create a server directory and place the JAR">
+    Create a dedicated directory for the server and move the downloaded JAR into it, renaming it to `paper.jar` for convenience. The PaperMC API exposes the latest build number as JSON, so the two commands below fetch that number first and then download the correct JAR automatically:
+
+    ```bash
+    mkdir -p ~/minecraft/server && cd ~/minecraft/server
+    BUILD=$(curl -s "https://api.papermc.io/v2/projects/paper/versions/1.21.1/builds" \
+      | grep -o '"build":[0-9]*' | tail -1 | grep -o '[0-9]*')
+    curl -o paper.jar "https://api.papermc.io/v2/projects/paper/versions/1.21.1/builds/${BUILD}/downloads/paper-1.21.1-${BUILD}.jar"
+    ```
+  </Step>
+  <Step title="Accept the Minecraft EULA">
+    Mojang requires you to accept the End User License Agreement before the server will start. Create the `eula.txt` file in one command:
+
+    ```bash
+    echo 'eula=true' > eula.txt
+    ```
+  </Step>
+  <Step title="Run the server for the first time">
+    Start the server once to let Paper generate all of its default configuration files, including `paper-global.yml`, `paper-world.yml`, and `spigot.yml`. Refer to the **Startup Flags** page for the full recommended JVM flag set — using the default flags at this stage is fine for a first-run config generation.
+  </Step>
+</Steps>
+
+<Note>
+  Always download Paper from the official PaperMC website at [https://papermc.io](https://papermc.io). Third-party mirrors may distribute outdated or tampered builds. The official site provides SHA-256 checksums for every build so you can verify the download.
+</Note>
+
+<Tip>
+  Paper generates `paper-global.yml` and `paper-world.yml` on first run. Do not edit either file until the server has fully started at least once — Paper writes the complete default configuration on startup, and editing a partially-written file will corrupt your settings.
+</Tip>
+
+## Key Paper Advantages
+
+<CardGroup cols={2}>
+  <Card title="Async Chunk Loading" icon="bolt">
+    Paper moves chunk read and write operations off the main tick thread entirely. Players exploring new terrain or triggering large-scale world operations no longer cause the server TPS to drop, because disk I/O happens concurrently on dedicated I/O threads.
+  </Card>
+  <Card title="Optimized Entity Tracking" icon="cube">
+    Paper rewrites the entity tracker to reduce the number of packets sent per tick when many entities are nearby. This directly lowers both server CPU usage and client-side packet processing, making high-mob-density areas far more playable.
+  </Card>
+  <Card title="Configurable Simulation Distance" icon="sliders">
+    `paper-world.yml` lets you set a simulation distance independently from the view distance. You can serve a wide view distance for visual quality while keeping the number of actively ticking chunks — and therefore entity AI, redstone, and crop growth — to a manageable count.
+  </Card>
+  <Card title="Active Security Patching" icon="shield-halved">
+    The Paper team backports security fixes and exploits patches on a rapid cadence, often within hours of a disclosed vulnerability. Running Paper means your server benefits from protections against dupe glitches, crash exploits, and NBT-overflow attacks without waiting for a full Mojang release.
+  </Card>
+</CardGroup>

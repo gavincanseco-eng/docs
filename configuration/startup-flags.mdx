@@ -1,0 +1,99 @@
+---
+title: "Aikar's Flags: Optimized Java Startup for Minecraft"
+sidebarTitle: "Startup Flags"
+description: "Use Aikar's optimized G1GC Java 21 flags to eliminate garbage collection pauses and minimize tick lag on your Paper Minecraft 1.21.1 server."
+---
+
+The JVM's garbage collector is the #1 cause of periodic lag spikes in Minecraft servers. Aikar's Flags are a battle-tested set of G1GC tuning parameters specifically designed for Minecraft that have been refined over many years. Unlike the JVM's default GC settings — which are optimised for short-lived applications — these flags tune G1GC's region sizing, pause targets, and heap occupancy thresholds to match Minecraft's unique long-lived object allocation pattern.
+
+## The Complete Startup Command
+
+The script below allocates 10 GB of heap. Adjust `-Xms` and `-Xmx` to match your server using the memory sizing guide further down this page.
+
+```bash start.sh
+#!/usr/bin/env bash
+java \
+  -Xms10G \
+  -Xmx10G \
+  -XX:+UseG1GC \
+  -XX:+ParallelRefProcEnabled \
+  -XX:MaxGCPauseMillis=200 \
+  -XX:+UnlockExperimentalVMOptions \
+  -XX:+DisableExplicitGC \
+  -XX:+AlwaysPreTouch \
+  -XX:G1NewSizePercent=30 \
+  -XX:G1MaxNewSizePercent=40 \
+  -XX:G1HeapRegionSize=8M \
+  -XX:G1ReservePercent=20 \
+  -XX:G1HeapWastePercent=5 \
+  -XX:G1MixedGCCountTarget=4 \
+  -XX:InitiatingHeapOccupancyPercent=15 \
+  -XX:G1MixedGCLiveThresholdPercent=90 \
+  -XX:G1RSetUpdatingPauseTimePercent=5 \
+  -XX:SurvivorRatio=32 \
+  -XX:+PerfDisableSharedMem \
+  -XX:MaxTenuringThreshold=1 \
+  -Dusing.aikars.flags=https://mcflags.emc.gs \
+  -Daikars.new.flags=true \
+  -jar paper.jar \
+  --nogui
+```
+
+## Flag Explanations
+
+Each flag below addresses a specific JVM behaviour that would otherwise cause latency on a live Minecraft server.
+
+| Flag | Purpose |
+|---|---|
+| `-Xms10G -Xmx10G` | Set min = max heap to avoid resizing pauses |
+| `-XX:+UseG1GC` | Use the G1 (Garbage-First) collector |
+| `-XX:MaxGCPauseMillis=200` | Target max GC pause of 200ms |
+| `-XX:+AlwaysPreTouch` | Pre-fault JVM memory pages on start to prevent runtime page faults |
+| `-XX:+DisableExplicitGC` | Prevent plugins from triggering `System.gc()` |
+| `-XX:G1NewSizePercent=30` | Tune G1 new region sizing for Minecraft's allocation patterns |
+| `-XX:InitiatingHeapOccupancyPercent=15` | Start GC earlier to avoid long GC cycles |
+| `-XX:+PerfDisableSharedMem` | Avoids perf counter writes that can cause random pauses |
+
+## Memory Sizing Guide
+
+Choose your heap size based on your expected concurrent player count. Always profile with [Spark](https://spark.lucko.me/) if you observe sustained high MSPT after scaling up.
+
+| Players | RAM to Allocate |
+|---|---|
+| 1–10 | 4–6 GB (`-Xms4G -Xmx4G`) |
+| 10–30 | 8–10 GB (`-Xms8G -Xmx8G`) |
+| 30–60 | 12–16 GB (`-Xms12G -Xmx12G`) |
+| 60+ | 16–24 GB + profile with Spark |
+
+<Warning>
+  Always set `-Xms` equal to `-Xmx`. An unequal min/max forces the JVM to constantly resize the heap, causing unpredictable GC pauses.
+</Warning>
+
+<Tip>
+  Leave at least 2 GB of system RAM free outside the JVM allocation for the OS, kernel network buffers, and other processes.
+</Tip>
+
+<Note>
+  These flags are specifically for Java 21 with G1GC. Do not use ZGC or Shenandoah — they are not optimized for Minecraft's specific allocation pattern.
+</Note>
+
+## Running the Server
+
+Once you have created `start.sh`, mark it executable and launch it directly:
+
+```bash
+chmod +x start.sh
+./start.sh
+```
+
+For a persistent session that survives SSH disconnections, use `tmux` or `screen`:
+
+```bash
+# Using tmux (recommended)
+tmux new-session -d -s minecraft './start.sh'
+tmux attach -t minecraft
+
+# Using screen
+screen -S minecraft ./start.sh
+# Detach with Ctrl+A, D
+```

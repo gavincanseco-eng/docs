@@ -1,0 +1,177 @@
+---
+title: "Diagnosing Lag Spikes on Your Minecraft Paper Server"
+sidebarTitle: "Lag Diagnosis"
+description: "Use Spark, server logs, and system metrics to identify whether lag is caused by the network, main thread, GC pauses, or hardware resource saturation."
+---
+
+Not all lag is the same. A player complaining that the game "feels laggy" could be experiencing high network latency, a server main thread that can't keep up, periodic freezes caused by the JVM garbage collector, or slow disk I/O during world saves — and each of these problems has an entirely different root cause and fix. Blindly throwing resources at the problem or installing random optimization plugins rarely helps. This page walks you through a systematic, evidence-based diagnosis process so you can identify exactly which layer is responsible and apply the right solution.
+
+## Lag Classification
+
+Before running any commands, it helps to categorize the type of lag you're dealing with. Use the descriptions below to narrow down which scenario matches your symptoms.
+
+<Tabs>
+  <Tab title="Network Lag">
+    **Symptoms:** Players report high ping or rubberbanding, but the server console shows TPS holding steady at 20.0.
+
+    **What's happening:** The server itself is fine — the problem lies somewhere in the network path between the player and the server. Common culprits include choosing a hosting region far from your player base, poor ISP routing, or bufferbloat on the player's or server's uplink.
+
+    **Where to look:**
+    - Verify the server's hosting region matches the geographic location of most players
+    - Run an MTR traceroute from a player machine to identify high-latency hops
+    - Check whether the server's network interface is experiencing packet loss
+
+    **Fixes:** Enable TCP BBR congestion control on the server OS, verify you're in the correct hosting region, and ask affected players to run a traceroute to share the network path.
+  </Tab>
+  <Tab title="Server Lag (TPS)">
+    **Symptoms:** TPS drops below 20.0 — commands feel delayed, mobs move sluggishly, and redstone contraptions slow down. The `/spark tps` output shows degraded tick rate.
+
+    **What's happening:** The Minecraft server's main thread cannot complete each game tick within 50 ms (the budget for a 20 TPS server). The thread is overloaded — there is too much work to do per tick.
+
+    **Common causes:**
+    - Entity count is too high (dropped items, arrows, passive mobs)
+    - A plugin is performing expensive work on the main thread
+    - Large or complex redstone contraptions
+    - View distance or simulation distance set too high for available hardware
+
+    **Fixes:** Profile the main thread with Spark to find the hot method, reduce view distance and simulation distance, install ClearLag, and audit plugins.
+  </Tab>
+  <Tab title="GC Lag">
+    **Symptoms:** Predictable lag spikes every two to five minutes. Between spikes the server runs fine. The spikes affect all players simultaneously and last for a fraction of a second to a few seconds.
+
+    **What's happening:** The JVM garbage collector is pausing all application threads while it reclaims heap memory. With default JVM flags, the G1GC collector can trigger long stop-the-world pauses on large heaps.
+
+    **Where to look:**
+    - Search the server log for GC-related messages
+    - Check for the `[GC pause` or `[Full GC` lines in `logs/latest.log`
+    - Use `/spark gcmonitor` to observe GC events in real time
+
+    **Fix:** Apply Aikar's Flags to the server start command. These flags tune G1GC specifically for Minecraft workloads, reducing pause frequency and duration significantly.
+  </Tab>
+  <Tab title="I/O Lag">
+    **Symptoms:** Lag spikes that coincide with the server auto-save cycle (every 5 minutes by default), or spikes when players move into ungenerated chunks. The server log may show `Saving chunks for level` immediately before the stutter.
+
+    **What's happening:** The server is waiting on disk I/O to complete before the main thread can continue. This is especially severe on spinning hard drives or shared hosting environments with slow storage.
+
+    **Common causes:**
+    - `sync-chunk-writes=true` in `paper-global.yml` (the default) forces the main thread to wait for each chunk write to flush to disk
+    - HDDs or low-quality SSDs with high write latency
+    - Generating new chunks in real time as players explore
+
+    **Fixes:** Set `sync-chunk-writes=false` in `paper-global.yml` to make chunk writes asynchronous. Use an NVMe SSD for the server's working directory. Pre-generate the world with Chunky before opening to players.
+  </Tab>
+</Tabs>
+
+## Diagnosis Workflow
+
+Work through these steps in order. Each step either identifies the problem or rules out a category, narrowing down the cause.
+
+<Steps>
+  <Step title="Check TPS and MSPT">
+    Start by establishing whether the main thread is actually struggling. Run both commands in the server console or in-game as an operator:
+
+    ```text
+    /spark tps
+    /spark mspt
+    ```
+
+    **Interpreting the output:**
+    - **TPS = 20.0, MSPT < 45 ms** — the main thread is healthy. If players still complain of lag, jump to Step 4 to investigate network latency.
+    - **TPS < 19.5** — the main thread is overloaded. Continue to Step 2.
+    - **MSPT is normally low but occasionally spikes** — likely GC pauses or I/O bursts. Continue to Step 5.
+  </Step>
+  <Step title="Run a Spark CPU Profile">
+    Spark's profiler samples the main thread (and async threads) to show exactly where CPU time is being spent. Start the profiler, wait for a lag period to occur, then stop it:
+
+    ```text
+    /spark profiler start --timeout 60
+    ```
+
+    ```text
+    # Wait 60 seconds, or manually trigger the lag spike (e.g. summon entities, trigger redstone)
+    ```
+
+    ```text
+    /spark profiler stop
+    # Spark will print a URL — open it in a browser
+    ```
+
+    In the profiler report, expand the call tree under `ServerLevel.tick` → look for methods consuming a disproportionate share of time. Plugin names appear in the stack trace, making it straightforward to identify a misbehaving plugin.
+  </Step>
+  <Step title="Check Entity Counts">
+    Excessive entities are one of the most common causes of main-thread overload on survival servers. Spark's entity summary gives a breakdown by type:
+
+    ```text
+    /spark entities
+    ```
+
+    Look for large counts of `item` (dropped items), `arrow`, `experience_orb`, or passive mob types exceeding the mob cap. If any type shows hundreds or thousands of entities, that is your primary suspect.
+
+    ```text
+    # Emergency cleanup — removes all dropped items from all loaded chunks
+    /kill @e[type=item]
+    ```
+
+    For a longer-term solution, configure `merge-radius` in `paper-world.yml` and install ClearLag to automatically clean up accumulations.
+  </Step>
+  <Step title="Check Network Latency from a Player Machine">
+    If TPS is healthy but players report lag, the problem is in the network path. Ask an affected player to run these commands from their own machine, substituting your server's IP address:
+
+    ```bash
+    ping -c 50 <server-ip>
+    ```
+
+    ```bash
+    mtr --report <server-ip>
+    ```
+
+    A `ping` average above 80–100 ms suggests the player is geographically distant from the server or there is routing inefficiency. The `mtr` report shows every network hop — a hop with high latency or packet loss is the point where the problem is introduced. Share the MTR report with your hosting provider if the problem is upstream.
+  </Step>
+  <Step title="Check for GC Pauses in the Server Log">
+    Search the latest server log for lines printed by the JVM when a garbage collection event pauses execution:
+
+    ```bash
+    grep -i 'GC\|garbage\|pause' ~/minecraft/server/logs/latest.log
+    ```
+
+    If you see frequent lines like `[GC pause (G1 Evacuation Pause)` or `[Full GC`, the garbage collector is the culprit. The solution is to apply Aikar's Flags, which tune G1GC's region sizes and pause targets to match Minecraft's allocation patterns.
+  </Step>
+  <Step title="Check System Resources">
+    If no specific software cause has been identified, verify that the host machine itself is not resource-saturated. Run the following commands on the server host:
+
+    ```bash
+    top -b -n 1 | head -20          # CPU usage and memory overview
+    ```
+
+    ```bash
+    iostat -x 1 5                   # Disk I/O wait percentage (iowait column)
+    ```
+
+    ```bash
+    free -h                         # RAM usage and swap activity
+    ```
+
+    **Warning signs:**
+    - CPU user+system > 85% sustained → the server needs more vCPUs or the workload needs reducing
+    - `iowait` > 10% → disk is a bottleneck; move to NVMe or enable async chunk writes
+    - Swap in use at all → the JVM is being swapped out; add RAM or reduce `-Xmx`
+  </Step>
+</Steps>
+
+## Quick Reference: Symptoms → Causes → Fixes
+
+Use this table to quickly match what you're observing to the most likely cause and the recommended action.
+
+| Symptom | Likely Cause | Fix |
+|---|---|---|
+| High ping, TPS = 20.0 | Network routing / wrong hosting region | Check hosting region, enable BBR |
+| TPS &lt; 19.5 consistently | Overloaded main thread | Profile with Spark, reduce `view-distance` |
+| Lag spikes every ~2–5 min | GC pauses | Apply Aikar's Flags |
+| Lag when players join or explore | Real-time chunk generation | Pre-generate world with Chunky |
+| Lag during world auto-saves | Synchronous chunk writes | Set `sync-chunk-writes=false` |
+| Random lag with otherwise normal load | Swap usage | Set `vm.swappiness=10`, add RAM |
+| Gradually worsening lag over a session | Entity / item accumulation | Install ClearLag, run `/kill @e[type=item]` |
+
+<Tip>
+  The Spark profiler report URL is the single most useful diagnostic artifact you can produce. If you're unsure how to interpret it, paste the link in the **#paper-help** channel of the [PaperMC Discord](https://discord.gg/papermc). Experienced community members can read a profiler report in seconds and point you directly at the problem.
+</Tip>

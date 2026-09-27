@@ -1,0 +1,56 @@
+---
+title: "Low-Latency Minecraft Java 1.21.1 Server Optimization Guide"
+sidebarTitle: "Overview"
+description: "Learn why Paper on Java 21 with OS-level network tuning delivers the absolute lowest latency for Minecraft Java Edition 1.21.1 players."
+---
+
+Low latency is not a single setting you flip — it is the compound result of every decision you make across your entire server stack. This guide exists because most Minecraft hosting tutorials stop at the software layer, leaving significant performance on the table. ServerHoster takes a full-stack approach: you will optimize the server software, the JVM runtime, the Linux kernel, and the physical hosting environment in concert, so that each layer amplifies the gains made by the one before it.
+
+<Note>
+  All configurations, JVM flags, and OS parameters in this guide target **Minecraft Java Edition 1.21.1** running on **Java 21 (LTS)**. Settings may differ for other Minecraft versions or older Java runtimes.
+</Note>
+
+## What This Guide Teaches You
+
+The goal is threefold: keep your tick loop running at a stable 20 TPS with zero lag spikes, reduce the round-trip time between your server and every connected client to the physical minimum, and support players connecting from any modern client version through ViaVersion — all without sacrificing world integrity or gameplay correctness.
+
+To reach that goal, this guide covers the following topics in depth:
+
+- **Paper 1.21.1** — why Paper outperforms vanilla and Spigot, how its async chunk engine and optimized entity tracking reduce both CPU time and network traffic per tick
+- **ViaVersion** — how to accept connections from clients newer than 1.21.1 without running a separate proxy, and the marginal overhead it adds
+- **JVM flags for Java 21** — G1GC and ZGC tuning flags that eliminate garbage-collection pauses, the single biggest source of periodic lag spikes on well-configured servers
+- **Linux `sysctl` network tuning** — kernel parameters that control TCP buffer sizes, packet queuing discipline, and socket backlog, all of which directly affect the latency players measure with the in-game ping indicator
+- **Hosting selection** — how CPU single-thread performance, memory bandwidth, NIC quality, and data-center geography interact, and what to look for when comparing providers
+
+## The Four Pillars of a Low-Latency Server
+
+Every optimization in this guide belongs to one of four pillars. Understanding how they relate to each other will help you prioritize when you are constrained by time or budget.
+
+<CardGroup cols={2}>
+  <Card title="Software" icon="cube">
+    Paper replaces the vanilla server with a heavily patched binary that processes the game loop more efficiently. Choosing the right software — and keeping it updated — is the foundation everything else rests on.
+  </Card>
+  <Card title="Configuration" icon="sliders">
+    Default configuration files are written for compatibility, not performance. Tuning view distance, entity activation ranges, chunk loading limits, and network compression thresholds brings the server in line with your actual hardware capabilities.
+  </Card>
+  <Card title="OS Tuning" icon="terminal">
+    The Linux kernel ships with conservative defaults designed for general-purpose workloads. Adjusting network buffer sizes, enabling BBR congestion control, and pinning interrupt handlers to dedicated CPU cores unlocks latency headroom that software alone cannot reach.
+  </Card>
+  <Card title="Hosting" icon="building">
+    Software and OS tuning have a ceiling set by the hardware they run on. Selecting a provider with modern CPUs, low-latency NVMe storage, and a well-peered network ensures your optimizations are never bottlenecked by the physical layer.
+  </Card>
+</CardGroup>
+
+## How the Layers Work Together
+
+Think of latency as a pipeline. A player's input travels from their client, across the public internet, into your server's NIC, through the kernel's network stack, up into the JVM, and finally into Paper's game loop — where it is processed, and a response travels the same path in reverse.
+
+Each pillar in this guide targets a distinct segment of that pipeline. **Software** optimizations reduce the time Paper spends inside the game loop per tick. **Configuration** tuning ensures the loop is not doing unnecessary work — loading chunks no player can see, simulating entities no player is near, or compressing packets that are already small. **OS tuning** shortens the time a packet spends waiting in kernel queues before Paper even sees it, and reduces the time the response spends waiting to be sent. **Hosting selection** minimizes the physical distance and network hops between your server and your players, which sets a hard lower bound on latency that no amount of software work can overcome.
+
+<Tip>
+  Start with the Software and Configuration pillars first. They deliver the largest absolute gains and require no special Linux privileges. Move on to OS Tuning once the server is stable, and revisit Hosting last — switching providers is disruptive, so confirm you have extracted every software-level gain before doing so.
+</Tip>
+
+<Info>
+  ViaVersion is covered alongside the Paper installation. It is a Paper plugin rather than a separate proxy, which means it adds negligible overhead while allowing players on newer client versions to connect seamlessly to your 1.21.1 server.
+</Info>
